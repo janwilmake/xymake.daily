@@ -11,6 +11,7 @@ export interface Env {
   TWEET_KV: KVNamespace;
   // Queue for processing users
   xymake_queue: Queue;
+  CREDENTIALS: string;
 }
 
 // Type for user data
@@ -18,6 +19,29 @@ interface UserWithReplies {
   url: string;
 }
 
+const queueUsers = async (env: Env) => {
+  try {
+    // Fetch the list of users
+    const response = await fetch("https://xymake.com/users.json");
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch users: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const users = (await response.json()) as string[];
+    console.log(`Processing ${users.length} users`);
+
+    // Queue each user for processing
+    for (const username of users) {
+      await env.xymake_queue.send({ username });
+      console.log(`Queued user: ${username}`);
+    }
+  } catch (error) {
+    console.error("Error in scheduled job:", error);
+  }
+};
 // Daily scheduled handler
 export default {
   // Handle HTTP requests
@@ -26,6 +50,12 @@ export default {
     env: Env,
     ctx: ExecutionContext,
   ): Promise<Response> {
+    const url = new URL(request.url);
+
+    if (env.CREDENTIALS === url.searchParams.get("secret")) {
+      await queueUsers(env);
+      return new Response("Running schedule now. tail it!");
+    }
     return new Response(
       "Worker is running. Check logs for schedule and queue processing.",
       {
@@ -41,28 +71,7 @@ export default {
     ctx: ExecutionContext,
   ): Promise<void> {
     console.log("Daily schedule triggered at", event.scheduledTime);
-
-    try {
-      // Fetch the list of users
-      const response = await fetch("https://xymake.com/users.json");
-
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch users: ${response.status} ${response.statusText}`,
-        );
-      }
-
-      const users = (await response.json()) as string[];
-      console.log(`Processing ${users.length} users`);
-
-      // Queue each user for processing
-      for (const username of users) {
-        await env.xymake_queue.send({ username });
-        console.log(`Queued user: ${username}`);
-      }
-    } catch (error) {
-      console.error("Error in scheduled job:", error);
-    }
+    await queueUsers(env);
   },
 
   // Queue consumer
