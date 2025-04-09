@@ -98,8 +98,12 @@ export default {
         // Fetch content for each URL
         const contentMap: Record<string, string> = {};
 
+        const MAX_PER_USER = 25;
         // Process URLs in parallel with a limit of 5 concurrent requests
-        const urlChunks = chunkArray(userData, 5);
+        const urlChunks = chunkArray(
+          userData.reverse().slice(0, MAX_PER_USER),
+          5,
+        );
 
         for (const chunk of urlChunks) {
           const promises = chunk.map(async (item) => {
@@ -131,8 +135,9 @@ export default {
           }
         }
 
+        console.log({ contentMap });
         // Store the aggregated data in KV
-        const key = `${username}-daily`;
+        const key = `daily/${username}`;
         await env.TWEET_KV.put(key, JSON.stringify(contentMap));
         console.log(
           `Stored data for ${username} with ${
